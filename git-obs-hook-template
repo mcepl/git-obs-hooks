@@ -1,0 +1,51 @@
+#!/bin/sh
+
+
+# Framework for running git hooks in git-obs and osc
+#
+# To install the hooks on the system, place executables under:
+#  - /usr/share/git-obs-hooks/<git-hook>.d/<filename>
+#  - ~/.local/share/git-obs-hooks/<git-hook>.d/<filename>
+# To enable git-obs-hooks in the current git repo, run: install-git-obs-hooks
+#
+# See githooks(5) man page for more help on the hooks.
+
+
+XDG_DATA_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}"
+GIT_OBS_HOOKS_DEBUG="${GIT_OBS_HOOKS_DEBUG:0}"
+HOOK_NAME="$(basename $0)"
+HOOK_DIR="$(readlink -f $0).d"
+HOME_HOOK_DIR="${XDG_DATA_HOME}/git-obs-hooks/${HOOK_NAME}"
+
+
+trap_exit() {
+    exit_code=$?
+    if [ ${exit_code} -ne 0 ]; then
+        echo "ERROR: ${HOOK_NAME} hook '${hook}' failed with exit code ${exit_code}"
+    fi
+    exit $exit_code
+}
+trap "trap_exit" EXIT
+
+
+debug_msg() {
+    if [ "${GIT_OBS_HOOKS_DEBUG}" != "1" ]; then
+        return
+    fi
+    echo "$@" >&1
+}
+
+
+debug_msg "Running ${HOOK_NAME} hooks:"
+for hook in "${HOOK_DIR}"/*; do
+    debug_msg "  - Running ${hook}"
+    ${hook} "$@"
+done
+
+
+if [ -d "${HOME_HOOK_DIR}" ]; then
+    for hook in "${HOME_HOOK_DIR}"/*; do
+        debug_msg "  - Running ${hook}"
+        ${hook} "$@"
+    done
+fi
