@@ -1,7 +1,14 @@
 #!/bin/sh
+set -eu
 
+SCRIPT_NAMES="applypatch-msg commit-msg fsmonitor-watchman post-update \
+pre-applypatch pre-commit pre-merge-commit prepare-commit-msg pre-push \
+pre-rebase pre-receive post-commit post-checkout post-merge push-to-checkout \
+sendemail-validate update"
 
+DEVEL=0
 GIT_TOPDIR=$(git rev-parse --show-toplevel 2>/dev/null)
+GIT_OBS_HOOKS_DEBUG=${GIT_OBS_HOOKS_DEBUG:-${GIT_TRACE:-0}}
 # shellcheck disable=SC2181
 if [ $? -ne 0 ]; then
     echo "ERROR: Couldn't determine git top directory"
@@ -15,8 +22,37 @@ debug_msg() {
     echo "$@" >&1
 }
 
+while getopts "d" flag; do
+    case "${flag}" in
+        d)
+            DEVEL=1
+       ;;
+        \?)
+            echo "Invalid option: $OPTARG" && exit 1
+       ;;
+    esac
+done
 
-HOOKS_TOPDIR="/usr/share/git-obs-hooks"
+if [ $DEVEL -eq 1 ] ; then
+    HOOKS_TOPDIR="$HOME/.local/share/git-obs-hooks"
+	debug_msg "HOOKS_TOPDIR = $HOOKS_TOPDIR and exists: $(test -d "$HOOKS_TOPDIR")"
+    if [ ! -d "${HOOKS_TOPDIR}" ] ; then
+        mkdir -p "$HOOKS_TOPDIR"
+        ( cd "$(dirname "$(readlink -f "$0")")"
+        for script in ${SCRIPT_NAMES} ; do
+            ln -srf git-obs-hook-template "$HOOKS_TOPDIR/$script"
+            install -d "${HOOKS_TOPDIR}/${script}.d"
+            if [ -d "./scripts/${script}.d" ] ; then
+                for inscript in ./scripts/"${script}".d/* ; do
+                    ln -srf "${inscript}" "${HOOKS_TOPDIR}/${script}.d/$(basename "${inscript}")"
+                done
+            fi
+        done
+        )
+    fi
+else
+    HOOKS_TOPDIR="/usr/share/git-obs-hooks"
+fi
 
 
 for hook_path in "${HOOKS_TOPDIR}"/*; do
@@ -27,5 +63,5 @@ for hook_path in "${HOOKS_TOPDIR}"/*; do
     hook_name=$(basename "${hook_path}")
     git_hook_path="${GIT_TOPDIR}/.git/hooks/${hook_name}"
     debug_msg "Installing hook ${hook_path} -> ${git_hook_path}"
-    ln -s --no-target-directory "${hook_path}" "${git_hook_path}"
+    ln -sTf "${hook_path}" "${git_hook_path}"
 done
